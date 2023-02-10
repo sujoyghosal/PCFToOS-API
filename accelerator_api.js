@@ -558,6 +558,7 @@ var whitelist = [
   "http://localhost:3000",
   "http://159.122.177.104:31363",
   "http://34.131.27.98:3000",
+  "https://pcf-to-os-web-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud/#/login",
 ];
 app.use(
   cors({
