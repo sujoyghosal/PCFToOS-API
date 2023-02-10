@@ -385,13 +385,15 @@ function createEvent(obj, req, res) {
   //console.log(`Index created: ${result}`);
 }
 //Get Events By Subscription
-app.post("/fetchevents", (req, res) => {
+app.get("/fetchevents", (req, res) => {
   console.log("FetchEvents Call...");
   dbConnection
     .collection("Events")
     .find({
-      event_name: {
-        $in: req.body.subscribed_events,
+      file_type: {
+        //$in: req.body.scan_id,
+        //$in: [29233],
+        $eq: "javascript",
       },
     })
     .limit(200)
