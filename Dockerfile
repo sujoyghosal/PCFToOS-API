@@ -15,5 +15,5 @@ RUN npm install
 # Bundle app source
 COPY . .
 
-EXPOSE 5555
+EXPOSE 8080
 CMD [ "node", "accelerator_api.js" ]
