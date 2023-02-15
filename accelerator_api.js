@@ -353,7 +353,8 @@ app.post("/events/insert", (req, res) => {
     file_type: req.body.type,
     file_number: req.body.file_number,
     results: req.body.file_details,
-    manifest: req.body.manifest
+    manifest: req.body.manifest,
+    packagejson: req.body.packagejson
   };
   createEvent(eventDocument, req, res);
 });
@@ -385,8 +386,10 @@ function createEvent(obj, req, res) {
   //console.log(`Index created: ${result}`);
 }
 //Get Events By Subscription
+
 app.get("/fetchevents", (req, res) => {
   console.log("FetchEvents Call...");
+  
   dbConnection
     .collection("Events")
     .find({
@@ -556,10 +559,8 @@ app.delete("/subscriptions/delete", (req, res) => {
 
 //app.use(cors());
 var whitelist = [
-  "https://donation-web-vq2uax3u4q-el.a.run.app",
   "http://localhost:3000",
-  "http://159.122.177.104:31363",
-  "http://34.131.27.98:3000",
+  "http://localhost:8080",
   "https://pcf-to-os-web-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud",
 ];
 app.use(
