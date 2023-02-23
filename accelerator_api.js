@@ -30,7 +30,8 @@ let dbConnection;
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri =
-  "mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
+  //"mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
+  "mongodb+srv://admin:rhelopenshifttest@https://mongodb-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud";
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -97,7 +98,7 @@ app.get("/login", (req, res) => {
           if (!found) {
             console.log(
               "New User has logged in, refreshing users list with " +
-                newUser.name
+              newUser.name
             );
             loggedinUsers.push(newUser);
           }
@@ -323,9 +324,9 @@ app.get("/eventsbyemailandtype", (req, res) => {
       if (err) {
         console.log(
           "eventsbyemailandtype - Failed to fetch events for " +
-            req.query.email +
-            ", error " +
-            err
+          req.query.email +
+          ", error " +
+          err
         );
         res.status(400).send("Error fetching Events!" + err);
       } else {
@@ -334,7 +335,7 @@ app.get("/eventsbyemailandtype", (req, res) => {
           res.status(200).jsonp(result);
           console.log(
             "eventsbyemailandtype - Success fetching events for " +
-              req.query.email
+            req.query.email
           );
         } else {
           res.status(200).send([]);
@@ -389,7 +390,7 @@ function createEvent(obj, req, res) {
 
 app.get("/fetchevents", (req, res) => {
   console.log("FetchEvents Call...");
-  
+
   dbConnection
     .collection("Events")
     .find({
