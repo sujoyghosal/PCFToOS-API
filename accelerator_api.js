@@ -32,6 +32,7 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri =
   //"mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
   "mongodb+srv://admin:rhelopenshifttest@mongo-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud";
+console.log("MongoDB URL=" + url);
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
