@@ -43,7 +43,7 @@ client.connect((err) => {
   dbConnection = client.db("PCFToOpenshiftDB");
   //dbConnection = client.db("rhelopenshifttest");
   // perform actions on the collection object
-  console.log("Successfully connected to MongoDB - PCFToOpenshiftDB");
+  console.log("Successfully connected to MongoDB - PCFToOpenshiftDB.." + uri);
   //client.close();
 });
 
