@@ -30,8 +30,8 @@ let dbConnection;
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri =
-  //  "mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
-  "mongodb://rhelopenshifttest:rhelopenshifttest@mongodb-32-rhel7";
+  "mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
+//"mongodb://rhelopenshifttest:rhelopenshifttest@mongodb-32-rhel7";
 //"mongodb://admin:admin@mongo-sujoy-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud"
 console.log("MongoDB URL=" + uri);
 const client = new MongoClient(uri, {
