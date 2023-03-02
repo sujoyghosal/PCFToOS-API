@@ -3,14 +3,18 @@ const express = require("express");
 const mongodb = require("mongodb");
 const recordRoutes = express.Router();
 const { exec } = require("child_process");
+const xl = require('excel4node');
+const { exit } = require('process');
 var http = require("http");
 const fs = require("fs");
 const cors = require("cors");
 const bodyParser = require("body-parser");
+const excel = require("exceljs");
 const PORT = process.env.PORT || 8080;
 var eventDocument = null;
 const app = express();
 var loggedinUsers = [];
+var rooms = [];
 app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -20,7 +24,8 @@ const options = {
   key: fs.readFileSync("server.key"),
   cert: fs.readFileSync("server.cert"),
 };*/
-
+const wb = new xl.Workbook();
+const ws = wb.addWorksheet('Scan Data');
 app.use(function (err, _req, res, next) {
   console.error(err.stack);
   res.status(500).send("Something broke!");
@@ -30,8 +35,8 @@ let dbConnection;
 
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri =
-  //"mongodb+srv://admin:admin@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
-  "mongodb://mongo-5.concession-kiosk.svc.cluster.local";
+  "mongodb+srv://sujoy:EjVe9knedEVhohNJ@cluster0.bk6hekg.mongodb.net/?retryWrites=true&w=majority";
+//  "mongodb://mongo-5.concession-kiosk.svc.cluster.local";
 //"mongodb://admin:admin@mongo-sujoy-concession-kiosk.pcf-to-ocp-migration-c6c44da74def18a795b07cc32856e138-0000.us-south.containers.appdomain.cloud"
 console.log("MongoDB URL=" + uri);
 const client = new MongoClient(uri, {
@@ -50,7 +55,43 @@ client.connect((err) => {
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
+app.get("/GetExcel", (req, res) => {
+  console.log("Got excel download request from app...")
+  let workbook = new excel.Workbook();
+  let worksheet = workbook.addWorksheet("Tutorials");
+
+  worksheet.columns = [
+    { header: "Id", key: "id", width: 5 },
+    { header: "Title", key: "title", width: 25 },
+    { header: "Description", key: "description", width: 25 },
+    { header: "Published", key: "published", width: 10 },
+  ];
+
+  // Add Array Rows
+  let tutorials = [];
+  tutorials.push({
+    id: 1,
+    title: "T1",
+    description: "D1",
+    published: "27 July"
+  })
+  worksheet.addRows(tutorials);
+
+  // res is a Stream object
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=" + "tutorials.xlsx"
+  );
+  return workbook.xlsx.write(res).then(function () {
+    res.status(200).end();
+  });
+})
 app.get("/users", (req, res) => {
+  console.log("Fetching user for email " + req.query.email);
   dbConnection
     .collection("Users")
     .find({
@@ -61,7 +102,7 @@ app.get("/users", (req, res) => {
     .limit(50)
     .toArray(function (err, result) {
       if (err) {
-        res.status(400).send("Error fetching users!");
+        res.status(400).send("Error fetching users!" + err);
       } else {
         res.json(result);
       }
@@ -116,7 +157,83 @@ app.get("/login", (req, res) => {
       }
     });
 });
+app.get("/fullscanexcel", (req, res) => {
+  var json = []
+  fs.readFile('scan_results.json', 'utf8', (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    json = JSON.parse(data);
+    console.log("Success reading data, length=" + json.length);
+    var arr = []
+    for (i = 0; i < json.length; i++) {
+      var obj = {
+        "Scan_ID": "'" + json[i].scan_id + "'",
+        "Time": "'" + json[i].timestamp + "'",
+        "Type": "'" + json[i].type + "'",
+        "File": "'" + json[i].file_details.file + "'",
+        "Dependencies": "'" + json[i].file_details.dependencies + "'",
+        "Env_vars": "'" + json[i].file_details.env_vars + "'",
+        "App_Name": "'" + json[i].manifest.applications[0].name + "'",
+        "Memory": "'" + json[i].manifest.applications[0].memory + "'",
+        "Instances": "'" + json[i].manifest.applications[0].instances + "'",
+        "Disk_Quota": "'" + json[i].manifest.applications[0].disk_quota + "'",
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']),
+        "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
+        "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
+      }
+      arr.push(obj);
+    }
+    console.log("Array Length = " + arr.length);
+    const headingColumnNames = [
+      "Scan ID",
+      "Date",
+      "Type",
+      "File Name",
+      "Dependencies",
+      "Env Vars",
+      "App Name",
+      "Memory",
+      "Instances",
+      "Disk Quota",
+      "Buildpacks",
+      "Log Rate Limit",
+      "Application Env Variables",
+      "Routes"
+    ];
+    //Write Column Title in Excel file
+    let headingColumnIndex = 1;
+    headingColumnNames.forEach(heading => {
+      ws.cell(1, headingColumnIndex++)
+        .string(heading)
+    });
+    //Write Data in Excel file
+    let rowIndex = 2;
+    arr.forEach(record => {
+      let columnIndex = 1;
+      Object.keys(record).forEach(columnName => {
+        ws.cell(rowIndex, columnIndex++)
+          .string(record[columnName])
+      });
+      rowIndex++;
+    });
+    console.log("Sending data.xls to web client..")
+    wb.write('data.xls');
+    wb.write('data.xls', res);
 
+    //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
+  });
+  //res.setHeader("Content-Type", "application/vnd.ms-excel");
+  /*res.writeHead(200, {
+    'Content-Type': 'application/vnd.ms-excel',
+    'Content-Length': fs.statSync('data.xls').size
+  });
+  var readStream = fs.createReadStream('data.xls');
+  // We replaced all the event handlers with a simple call to readStream.pipe()
+  readStream.pipe(res);*/
+})
 async function getUserByEmail(email) {
   if (!email || email == null || email.length < 3) {
     console.log("GetUserByEmail: Not a valid email");
@@ -349,7 +466,7 @@ app.get("/eventsbyemailandtype", (req, res) => {
 });
 //Create Event
 app.post("/events/insert", (req, res) => {
-  console.log("Received array " + JSON.stringify(req.body));
+  //console.log("Received array " + JSON.stringify(req.body));
   eventDocument = {
     scan_id: req.body.scan_id,
     time_created: req.body.timestamp,
@@ -366,21 +483,22 @@ app.post("/events/insert", (req, res) => {
 //Create Event
 //app.post("/events/insert", (req, res) => {
 function createEvent(obj, req, res) {
-  console.log("Event document = " + JSON.stringify(obj));
+  //console.log("Event document = " + JSON.stringify(obj));
   var channel = obj.email;
+  console.log("Sending event to subscribers of channel " + channel);
+  //io.sockets.in(channel).emit("new-scan", {
 
+  io.local.emit("new-scan", {
+    event_id: obj.scan_id,
+    eventDetails: obj,
+  });
   dbConnection.collection("Events").insertOne(obj, function (err, result) {
     if (err) {
       console.error(JSON.stringify(err));
       res.status(401).send(err);
     } else {
       console.log(`Added a new event with id ${result.insertedId}`);
-      console.log("Sending event to subscribers of channel " + channel);
-      //io.sockets.in(channel).emit("new-scan", {
-      io.local.emit("new-scan", {
-        event_id: result.insertedId,
-        eventDetails: obj,
-      });
+
       res.status(200).send("Success");
     }
   });
@@ -587,6 +705,7 @@ const io = require("socket.io")(httpServer, {
   allowEIO3: true,
 });
 var mysocket = null;
+
 io.on("connection", function (socket) {
   mysocket = socket;
   console.log("a user connected");
@@ -594,6 +713,7 @@ io.on("connection", function (socket) {
   socket.on("create-room", function (room) {
     if (room) {
       socket.join(room.channel);
+      rooms.push(room.channel);
       console.log("Joined client socket to room " + room.channel);
     }
   });
@@ -605,5 +725,6 @@ io.on("connection", function (socket) {
   socket.on("leave", function (room) {
     console.log("#####Disconecting client socket from room " + room.channel);
     socket.leave(room.channel);
+    rooms.pop(room.channel);
   });
 });
