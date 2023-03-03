@@ -466,12 +466,13 @@ app.get("/eventsbyemailandtype", (req, res) => {
 });
 //Create Event
 app.post("/events/insert", (req, res) => {
-  //console.log("Received array " + JSON.stringify(req.body));
+  console.log("Received array " + JSON.stringify(req.body));
   eventDocument = {
     scan_id: req.body.scan_id,
     time_created: req.body.timestamp,
     event_type: "top level scan",
     file_type: req.body.type,
+    total_files: req.body.total_files,
     file_number: req.body.file_number,
     results: req.body.file_details,
     manifest: req.body.manifest,
