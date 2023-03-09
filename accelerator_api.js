@@ -24,8 +24,7 @@ const options = {
   key: fs.readFileSync("server.key"),
   cert: fs.readFileSync("server.cert"),
 };*/
-const wb = new xl.Workbook();
-const ws = wb.addWorksheet('Scan Data');
+
 app.use(function (err, _req, res, next) {
   console.error(err.stack);
   res.status(500).send("Something broke!");
@@ -55,41 +54,6 @@ client.connect((err) => {
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
-app.get("/GetExcel", (req, res) => {
-  console.log("Got excel download request from app...")
-  let workbook = new excel.Workbook();
-  let worksheet = workbook.addWorksheet("Tutorials");
-
-  worksheet.columns = [
-    { header: "Id", key: "id", width: 5 },
-    { header: "Title", key: "title", width: 25 },
-    { header: "Description", key: "description", width: 25 },
-    { header: "Published", key: "published", width: 10 },
-  ];
-
-  // Add Array Rows
-  let tutorials = [];
-  tutorials.push({
-    id: 1,
-    title: "T1",
-    description: "D1",
-    published: "27 July"
-  })
-  worksheet.addRows(tutorials);
-
-  // res is a Stream object
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
-  res.setHeader(
-    "Content-Disposition",
-    "attachment; filename=" + "tutorials.xlsx"
-  );
-  return workbook.xlsx.write(res).then(function () {
-    res.status(200).end();
-  });
-})
 app.get("/users", (req, res) => {
   console.log("Fetching user for email " + req.query.email);
   dbConnection
@@ -158,8 +122,14 @@ app.get("/login", (req, res) => {
     });
 });
 app.get("/fullscanexcel", (req, res) => {
+  generateScanSummaryExcel('/tmp/scan_results.json', req, res)
+})
+
+function generateScanSummaryExcel(jsonfile, req, res) {
+  const wb = new xl.Workbook();
+  const ws = wb.addWorksheet('Scan Data');
   var json = []
-  fs.readFile('scan_results.json', 'utf8', (err, data) => {
+  fs.readFile(jsonfile, 'utf8', (err, data) => {
     if (err) {
       console.error(err);
       return;
@@ -233,7 +203,86 @@ app.get("/fullscanexcel", (req, res) => {
   var readStream = fs.createReadStream('data.xls');
   // We replaced all the event handlers with a simple call to readStream.pipe()
   readStream.pipe(res);*/
-})
+}
+function generateQueryFilteredExcel(jsonfile, req, res) {
+  const wb = new xl.Workbook();
+  const ws = wb.addWorksheet('Scan Data');
+  var json = []
+  fs.readFile(jsonfile, 'utf8', (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    json = JSON.parse(data);
+    console.log("Success reading data, length=" + json.length);
+    var arr = []
+    for (i = 0; i < json.length; i++) {
+      var obj = {
+        "Scan_ID": "'" + json[i].scan_id + "'",
+        "Time": "'" + json[i].time_created + "'",
+        "Type": "'" + json[i].file_type + "'",
+        "File": "'" + json[i].file_details.file + "'",
+        "Dependencies": "'" + json[i].file_details.dependencies + "'",
+        "Env_vars": "'" + json[i].file_details.env_vars + "'",
+        "App_Name": "'" + json[i].manifest.applications[0].name + "'",
+        "Memory": "'" + json[i].manifest.applications[0].memory + "'",
+        "Instances": "'" + json[i].manifest.applications[0].instances + "'",
+        "Disk_Quota": "'" + json[i].manifest.applications[0].disk_quota + "'",
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']),
+        "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
+        "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
+      }
+      arr.push(obj);
+    }
+    console.log("Array Length = " + arr.length);
+    const headingColumnNames = [
+      "Scan ID",
+      "Date",
+      "Type",
+      "File Name",
+      "Dependencies",
+      "Env Vars",
+      "App Name",
+      "Memory",
+      "Instances",
+      "Disk Quota",
+      "Buildpacks",
+      "Log Rate Limit",
+      "Application Env Variables",
+      "Routes"
+    ];
+    //Write Column Title in Excel file
+    let headingColumnIndex = 1;
+    headingColumnNames.forEach(heading => {
+      ws.cell(1, headingColumnIndex++)
+        .string(heading)
+    });
+    //Write Data in Excel file
+    let rowIndex = 2;
+    arr.forEach(record => {
+      let columnIndex = 1;
+      Object.keys(record).forEach(columnName => {
+        ws.cell(rowIndex, columnIndex++)
+          .string(record[columnName])
+      });
+      rowIndex++;
+    });
+    console.log("Sending data.xls to web client..")
+    wb.write('/tmp/data.xls');
+    wb.write('/tmp/data.xls', res);
+
+    //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
+  });
+  //res.setHeader("Content-Type", "application/vnd.ms-excel");
+  /*res.writeHead(200, {
+    'Content-Type': 'application/vnd.ms-excel',
+    'Content-Length': fs.statSync('data.xls').size
+  });
+  var readStream = fs.createReadStream('data.xls');
+  // We replaced all the event handlers with a simple call to readStream.pipe()
+  readStream.pipe(res);*/
+}
 async function getUserByEmail(email) {
   if (!email || email == null || email.length < 3) {
     console.log("GetUserByEmail: Not a valid email");
@@ -464,6 +513,16 @@ app.get("/eventsbyemailandtype", (req, res) => {
       }
     });
 });
+app.post("/new-scan-started", (req, res) => {
+  console.log("Got new scan started event from discovery script...");
+  console.log("Notifying to all connected browsers");
+  //io.sockets.in(channel).emit("new-scan", {
+
+  io.local.emit("new-event", {
+    message: "Streaming Scan data to follow..."
+  });
+  res.send("Success Notifying New Scan Event to clients!")
+});
 //Create Event
 app.post("/events/insert", (req, res) => {
   console.log("Received array " + JSON.stringify(req.body));
@@ -474,7 +533,7 @@ app.post("/events/insert", (req, res) => {
     file_type: req.body.type,
     total_files: req.body.total_files,
     file_number: req.body.file_number,
-    results: req.body.file_details,
+    file_details: req.body.file_details,
     manifest: req.body.manifest,
     packagejson: req.body.packagejson
   };
@@ -485,8 +544,7 @@ app.post("/events/insert", (req, res) => {
 //app.post("/events/insert", (req, res) => {
 function createEvent(obj, req, res) {
   //console.log("Event document = " + JSON.stringify(obj));
-  var channel = obj.email;
-  console.log("Sending event to subscribers of channel " + channel);
+  console.log("Sending event to all connected browsers..event id=" + obj.scan_id);
   //io.sockets.in(channel).emit("new-scan", {
 
   io.local.emit("new-scan", {
@@ -498,7 +556,7 @@ function createEvent(obj, req, res) {
       console.error(JSON.stringify(err));
       res.status(401).send(err);
     } else {
-      console.log(`Added a new event with id ${result.insertedId}`);
+      console.log(`Added a new event to DB with id ${result.insertedId}`);
 
       res.status(200).send("Success");
     }
@@ -544,6 +602,84 @@ app.get("/topscan", (req, res) => {
   console.log("received top level scan request from " + req.query.email);
   console.log("Response: " + JSON.stringify(eventDocument));
   res.jsonp(eventDocument);
+});
+
+app.get("/getEventsForVeryHighInstances", (req, res) => {
+  console.log("getEventsForVeryHighInstances Call for scan id = " + req.query.scan_id);
+
+  dbConnection
+    .collection("Events")
+    .find({
+      scan_id: Number.parseInt(req.query.scan_id),
+      'manifest.applications.0.instances': { $gt: 5 }
+    })
+    .limit(200)
+    .toArray(function (err, result) {
+      if (err) {
+        console.log("Failed getEventsForVeryHighInstances  " + err);
+        res.status(404).send("No events");
+      } else {
+        //res.json(result);
+        console.log("Success Calling fetch events");
+        if (result && result.length > 0) {
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/vh_instances.json', JSON.stringify(result), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/vh_instances.json', req, res);
+          });
+          //res.status(200).jsonp(result);
+        } else {
+          //res.status(404).send("No Events");
+          console.log("No events");
+        }
+      }
+    });
+});
+
+app.get("/getEventsForVeryHighMemory", (req, res) => {
+  console.log("getEventsForVeryHighMemory Call for scan id = " + req.query.scan_id);
+
+  dbConnection
+    .collection("Events")
+    .find({
+      scan_id: Number.parseInt(req.query.scan_id),
+      //'manifest.applications.0.memory': { $gt: 1024 }
+    })
+    .limit(200)
+    .toArray(function (err, result) {
+      if (err) {
+        console.log("Failed getEventsForVeryHighMemory  " + err);
+        res.status(404).send("No events");
+      } else {
+        //res.json(result);
+        console.log("Success Calling fetch events");
+        if (result && result.length > 0) {
+          var m_array = [];
+          for (i = 0; i < result.length; i++) {
+            var m = result[i].manifest.applications[0].memory.replace(/\D/g, '');
+            if (m > 511) {
+              m_array.push(result[i]);
+            }
+          }
+          console.log("Found " + m_array.length + " projects with very high memory values in manifest.yaml.");
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/vh_memory.json', JSON.stringify(m_array), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/vh_memory.json', req, res);
+          });
+          //res.status(200).jsonp(result);
+        } else {
+          //res.status(404).send("No Events");
+          console.log("No events");
+        }
+      }
+    });
 });
 function runShellScript(command) {
   exec(command, (error, stdout, stderr) => {
