@@ -139,18 +139,19 @@ function generateScanSummaryExcel(jsonfile, req, res) {
     var arr = []
     for (i = 0; i < json.length; i++) {
       var obj = {
-        "Scan_ID": "'" + json[i].scan_id + "'",
-        "Time": "'" + json[i].timestamp + "'",
-        "Type": "'" + json[i].type + "'",
-        "File": "'" + json[i].file_details.file + "'",
-        "Dependencies": "'" + json[i].file_details.dependencies + "'",
-        "Env_vars": "'" + json[i].file_details.env_vars + "'",
-        "App_Name": "'" + json[i].manifest.applications[0].name + "'",
-        "Memory": "'" + json[i].manifest.applications[0].memory + "'",
-        "Instances": "'" + json[i].manifest.applications[0].instances + "'",
-        "Disk_Quota": "'" + json[i].manifest.applications[0].disk_quota + "'",
-        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks),
-        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']),
+        "Scan_ID": JSON.stringify(json[i].scan_id),
+        "Time": JSON.stringify(json[i].timestamp).replace(/"/g, ""),
+        "Type": JSON.stringify(json[i].type).replace(/"/g, ""),
+        "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
+        "Dependencies": JSON.stringify(json[i].file_details.dependencies).replace(/"/g, ""),
+        "User_Defined_Env_Vars": JSON.stringify(json[i].file_details.env_vars[0]),
+        "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
+        "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
+        "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
+        "Instances": JSON.stringify(json[i].manifest.applications[0].instances).replace(/"/g, ""),
+        "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
         "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
         "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
       }
@@ -163,14 +164,15 @@ function generateScanSummaryExcel(jsonfile, req, res) {
       "Type",
       "File Name",
       "Dependencies",
-      "Env Vars",
+      "User Defined Env Vars",
+      "System (VCAP) Env Vars",
       "App Name",
       "Memory",
       "Instances",
       "Disk Quota",
       "Buildpacks",
       "Log Rate Limit",
-      "Application Env Variables",
+      "Manifest Env Variables",
       "Routes"
     ];
     //Write Column Title in Excel file
@@ -217,19 +219,21 @@ function generateQueryFilteredExcel(jsonfile, req, res) {
     console.log("Success reading data, length=" + json.length);
     var arr = []
     for (i = 0; i < json.length; i++) {
+      console.log(JSON.stringify(json[i]));
       var obj = {
-        "Scan_ID": "'" + json[i].scan_id + "'",
-        "Time": "'" + json[i].time_created + "'",
-        "Type": "'" + json[i].file_type + "'",
-        "File": "'" + json[i].file_details.file + "'",
-        "Dependencies": "'" + json[i].file_details.dependencies + "'",
-        "Env_vars": "'" + json[i].file_details.env_vars + "'",
-        "App_Name": "'" + json[i].manifest.applications[0].name + "'",
-        "Memory": "'" + json[i].manifest.applications[0].memory + "'",
-        "Instances": "'" + json[i].manifest.applications[0].instances + "'",
-        "Disk_Quota": "'" + json[i].manifest.applications[0].disk_quota + "'",
-        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks),
-        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']),
+        "Scan_ID": JSON.stringify(json[i].scan_id),
+        "Time": JSON.stringify(json[i].time_created).replace(/"/g, ""),
+        "Type": JSON.stringify(json[i].file_type).replace(/"/g, ""),
+        "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
+        "Dependencies": JSON.stringify(json[i].file_details.dependencies).replace(/"/g, ""),
+        "User_Defined_Env_Vars": JSON.stringify(json[i].file_details.env_vars[0]),
+        "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
+        "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
+        "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
+        "Instances": JSON.stringify(json[i].manifest.applications[0].instances).replace(/"/g, ""),
+        "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
         "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
         "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
       }
@@ -242,7 +246,8 @@ function generateQueryFilteredExcel(jsonfile, req, res) {
       "Type",
       "File Name",
       "Dependencies",
-      "Env Vars",
+      "User Defined Env Vars",
+      "System (VCAP) Env Vars",
       "App Name",
       "Memory",
       "Instances",
@@ -604,31 +609,55 @@ app.get("/topscan", (req, res) => {
   res.jsonp(eventDocument);
 });
 
-app.get("/getEventsForVeryHighInstances", (req, res) => {
-  console.log("getEventsForVeryHighInstances Call for scan id = " + req.query.scan_id);
-
+app.get("/getEventsForInstances", (req, res) => {
+  console.log("getEventsForInstances Call for scan id = " + req.query.scan_id);
+  var type = req.query.type;
+  if (!type || type.length == 0) {
+    console.log("No type value found in request - setting to default very high");
+    type = "vh";
+  }
+  var threshold_low = 0;
+  var threshold_high = 0;
+  switch (type) {
+    case "n":
+      threshold_low = 0;
+      threshold_high = 2;
+      break;
+    case "mh":
+      threshold_low = 2;
+      threshold_high = 4;
+      break;
+    case "h":
+      threshold_low = 4;
+      threshold_high = 6;
+      break;
+    case "vh":
+      threshold_low = 6;
+      threshold_high = 4000;
+      break;
+  }
   dbConnection
     .collection("Events")
     .find({
       scan_id: Number.parseInt(req.query.scan_id),
-      'manifest.applications.0.instances': { $gt: 5 }
+      'manifest.applications.0.instances': { $gt: threshold_low, $lte: threshold_high }
     })
-    .limit(200)
+    .limit(20000)
     .toArray(function (err, result) {
       if (err) {
-        console.log("Failed getEventsForVeryHighInstances  " + err);
+        console.log("Failed getEventsForInstances  " + err);
         res.status(404).send("No events");
       } else {
         //res.json(result);
         console.log("Success Calling fetch events");
         if (result && result.length > 0) {
           var options = { flag: 'w' };
-          fs.writeFile('/tmp/vh_instances.json', JSON.stringify(result), options, err => {
+          fs.writeFile('/tmp/instances.json', JSON.stringify(result), options, err => {
             if (err) {
               console.error(err);
             }
             console.log("Created file...");
-            generateQueryFilteredExcel('/tmp/vh_instances.json', req, res);
+            generateQueryFilteredExcel('/tmp/instances.json', req, res);
           });
           //res.status(200).jsonp(result);
         } else {
@@ -639,19 +668,43 @@ app.get("/getEventsForVeryHighInstances", (req, res) => {
     });
 });
 
-app.get("/getEventsForVeryHighMemory", (req, res) => {
-  console.log("getEventsForVeryHighMemory Call for scan id = " + req.query.scan_id);
-
+app.get("/getEventsForMemory", (req, res) => {
+  console.log("getEventsForMemory Call for scan id = " + req.query.scan_id);
+  var type = req.query.type;
+  if (!type || type.length == 0) {
+    console.log("No type value found in request - setting to default very high");
+    type = "vh";
+  }
+  var threshold_low = 0;
+  var threshold_high = 0;
+  switch (type) {
+    case "n":
+      threshold_low = 0;
+      threshold_high = 256;
+      break;
+    case "mh":
+      threshold_low = 256;
+      threshold_high = 512;
+      break;
+    case "h":
+      threshold_low = 512;
+      threshold_high = 1024;
+      break;
+    case "vh":
+      threshold_low = 1024;
+      threshold_high = 5000;
+      break;
+  }
   dbConnection
     .collection("Events")
     .find({
       scan_id: Number.parseInt(req.query.scan_id),
       //'manifest.applications.0.memory': { $gt: 1024 }
     })
-    .limit(200)
+    .limit(5000)
     .toArray(function (err, result) {
       if (err) {
-        console.log("Failed getEventsForVeryHighMemory  " + err);
+        console.log("Failed getEventsForMemory  " + err);
         res.status(404).send("No events");
       } else {
         //res.json(result);
@@ -660,18 +713,18 @@ app.get("/getEventsForVeryHighMemory", (req, res) => {
           var m_array = [];
           for (i = 0; i < result.length; i++) {
             var m = result[i].manifest.applications[0].memory.replace(/\D/g, '');
-            if (m > 511) {
+            if (m > threshold_low && m <= threshold_high) {
               m_array.push(result[i]);
             }
           }
-          console.log("Found " + m_array.length + " projects with very high memory values in manifest.yaml.");
+          console.log("Found " + m_array.length + " projects with " + type + " type memory values in manifest.yaml.");
           var options = { flag: 'w' };
-          fs.writeFile('/tmp/vh_memory.json', JSON.stringify(m_array), options, err => {
+          fs.writeFile('/tmp/memory.json', JSON.stringify(m_array), options, err => {
             if (err) {
               console.error(err);
             }
             console.log("Created file...");
-            generateQueryFilteredExcel('/tmp/vh_memory.json', req, res);
+            generateQueryFilteredExcel('/tmp/memory.json', req, res);
           });
           //res.status(200).jsonp(result);
         } else {
