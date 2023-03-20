@@ -127,7 +127,22 @@ app.get("/fullscanexcel", (req, res) => {
 
 function generateScanSummaryExcel(jsonfile, req, res) {
   const wb = new xl.Workbook();
-  const ws = wb.addWorksheet('Scan Data');
+  const ws = wb.addWorksheet('Full Scan Data');
+  var headerStyle = wb.createStyle({
+    font: {
+      bold: true,
+      color: '000000',
+      name: 'Calibri',
+      size: 14,
+    },
+  });
+  var style = wb.createStyle({
+    font: {
+      color: '#000000',
+      size: 12,
+      name: 'Calibri',
+    }
+  });
   var json = []
   fs.readFile(jsonfile, 'utf8', (err, data) => {
     if (err) {
@@ -139,7 +154,7 @@ function generateScanSummaryExcel(jsonfile, req, res) {
     var arr = []
     for (i = 0; i < json.length; i++) {
       var obj = {
-        "Scan_ID": JSON.stringify(json[i].scan_id),
+        "Scan_ID": json[i].scan_id,
         "Time": JSON.stringify(json[i].timestamp).replace(/"/g, ""),
         "Type": JSON.stringify(json[i].type).replace(/"/g, ""),
         "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
@@ -148,7 +163,7 @@ function generateScanSummaryExcel(jsonfile, req, res) {
         "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
         "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
         "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
-        "Instances": JSON.stringify(json[i].manifest.applications[0].instances).replace(/"/g, ""),
+        "Instances": json[i].manifest.applications[0].instances,
         "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
         "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
         "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
@@ -179,21 +194,27 @@ function generateScanSummaryExcel(jsonfile, req, res) {
     let headingColumnIndex = 1;
     headingColumnNames.forEach(heading => {
       ws.cell(1, headingColumnIndex++)
-        .string(heading)
+        .string(heading).style(headerStyle)
     });
     //Write Data in Excel file
     let rowIndex = 2;
     arr.forEach(record => {
       let columnIndex = 1;
       Object.keys(record).forEach(columnName => {
-        ws.cell(rowIndex, columnIndex++)
-          .string(record[columnName])
+        if (columnIndex == 1 || columnIndex == 10) {
+          ws.cell(rowIndex, columnIndex++)
+            .number(record[columnName])
+        } else {
+          ws.cell(rowIndex, columnIndex++)
+            .string(record[columnName]).style(style)
+        }
+
       });
       rowIndex++;
     });
     console.log("Sending data.xls to web client..")
-    wb.write('data.xls');
-    wb.write('data.xls', res);
+    //wb.write('/tmp/data.xls');
+    wb.write('/tmp/data.xls', res);
 
     //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
   });
@@ -206,9 +227,23 @@ function generateScanSummaryExcel(jsonfile, req, res) {
   // We replaced all the event handlers with a simple call to readStream.pipe()
   readStream.pipe(res);*/
 }
-function generateQueryFilteredExcel(jsonfile, req, res) {
+function generateQueryFilteredExcel(jsonfile, req, res, desc) {
   const wb = new xl.Workbook();
-  const ws = wb.addWorksheet('Scan Data');
+  const ws = wb.addWorksheet(desc);
+  var headerStyle = wb.createStyle({
+    font: {
+      bold: true,
+      color: '000000',
+      size: 14,
+    },
+  });
+  var style = wb.createStyle({
+    font: {
+      color: '#000000',
+      size: 12,
+      name: 'Calibri',
+    }
+  });
   var json = []
   fs.readFile(jsonfile, 'utf8', (err, data) => {
     if (err) {
@@ -221,7 +256,7 @@ function generateQueryFilteredExcel(jsonfile, req, res) {
     for (i = 0; i < json.length; i++) {
       console.log(JSON.stringify(json[i]));
       var obj = {
-        "Scan_ID": JSON.stringify(json[i].scan_id),
+        "Scan_ID": json[i].scan_id,
         "Time": JSON.stringify(json[i].time_created).replace(/"/g, ""),
         "Type": JSON.stringify(json[i].file_type).replace(/"/g, ""),
         "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
@@ -230,7 +265,7 @@ function generateQueryFilteredExcel(jsonfile, req, res) {
         "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
         "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
         "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
-        "Instances": JSON.stringify(json[i].manifest.applications[0].instances).replace(/"/g, ""),
+        "Instances": json[i].manifest.applications[0].instances,
         "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
         "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
         "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
@@ -261,20 +296,25 @@ function generateQueryFilteredExcel(jsonfile, req, res) {
     let headingColumnIndex = 1;
     headingColumnNames.forEach(heading => {
       ws.cell(1, headingColumnIndex++)
-        .string(heading)
+        .string(heading).style(headerStyle)
     });
     //Write Data in Excel file
     let rowIndex = 2;
     arr.forEach(record => {
       let columnIndex = 1;
       Object.keys(record).forEach(columnName => {
-        ws.cell(rowIndex, columnIndex++)
-          .string(record[columnName])
+        if (columnIndex == 1 || columnIndex == 10) {
+          ws.cell(rowIndex, columnIndex++)
+            .number(record[columnName]).style(style)
+        } else {
+          ws.cell(rowIndex, columnIndex++)
+            .string(record[columnName]).style(style)
+        }
       });
       rowIndex++;
     });
     console.log("Sending data.xls to web client..")
-    wb.write('/tmp/data.xls');
+    //wb.write('/tmp/data.xls');
     wb.write('/tmp/data.xls', res);
 
     //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
@@ -535,6 +575,7 @@ app.post("/events/insert", (req, res) => {
     scan_id: req.body.scan_id,
     time_created: req.body.timestamp,
     event_type: "top level scan",
+    project_name: req.body.current_project,
     file_type: req.body.type,
     total_files: req.body.total_files,
     file_number: req.body.file_number,
@@ -618,22 +659,27 @@ app.get("/getEventsForInstances", (req, res) => {
   }
   var threshold_low = 0;
   var threshold_high = 0;
+  var desc = "";
   switch (type) {
     case "n":
       threshold_low = 0;
       threshold_high = 2;
+      desc = "Normal Container Instances";
       break;
     case "mh":
       threshold_low = 2;
       threshold_high = 4;
+      desc = "Medium High Container Instances";
       break;
     case "h":
       threshold_low = 4;
       threshold_high = 6;
+      desc = "High Container Instances";
       break;
     case "vh":
       threshold_low = 6;
       threshold_high = 4000;
+      desc = "Very High Container Instances";
       break;
   }
   dbConnection
@@ -657,7 +703,7 @@ app.get("/getEventsForInstances", (req, res) => {
               console.error(err);
             }
             console.log("Created file...");
-            generateQueryFilteredExcel('/tmp/instances.json', req, res);
+            generateQueryFilteredExcel('/tmp/instances.json', req, res, desc);
           });
           //res.status(200).jsonp(result);
         } else {
@@ -677,22 +723,27 @@ app.get("/getEventsForMemory", (req, res) => {
   }
   var threshold_low = 0;
   var threshold_high = 0;
+  var desc = "";
   switch (type) {
     case "n":
       threshold_low = 0;
       threshold_high = 256;
+      desc = "Normal Container Memory"
       break;
     case "mh":
       threshold_low = 256;
       threshold_high = 512;
+      desc = "Medium High Container Memory"
       break;
     case "h":
       threshold_low = 512;
       threshold_high = 1024;
+      desc = "High Container Memory"
       break;
     case "vh":
       threshold_low = 1024;
       threshold_high = 5000;
+      desc = "Very High Container Memory"
       break;
   }
   dbConnection
@@ -724,7 +775,7 @@ app.get("/getEventsForMemory", (req, res) => {
               console.error(err);
             }
             console.log("Created file...");
-            generateQueryFilteredExcel('/tmp/memory.json', req, res);
+            generateQueryFilteredExcel('/tmp/memory.json', req, res, desc);
           });
           //res.status(200).jsonp(result);
         } else {
@@ -749,18 +800,16 @@ function runShellScript(command) {
 }
 //Event Update
 app.put("/events/update", (req, res) => {
+  console.log("Got an update request for scan id " + req.body.scan_id + " and project=" + req.body.project_name);
   const eventUpdateQuery = {
-    _id: new mongodb.ObjectID(req.body.eventID),
+    scan_id: req.body.scan_id,
+    project_name: req.body.project_name
   };
   console.log("Event update query body: " + JSON.stringify(req.body));
   const updates = {
     $set: {
-      event_type: req.body.event_type,
-      event_name: req.body.event_name,
-      city: req.body.city,
-      item_category: req.body.item_category,
-      item_name: req.body.item_name,
-      time_created: Date().toString(),
+      status: req.body.status,
+      migration_notes: req.body.migration_notes
     },
   };
 
