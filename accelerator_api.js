@@ -52,7 +52,7 @@ client.connect((err) => {
 });
 
 app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/index.html");
+  res.send("Hi, Welcome to the PCF to OpenShift APIs")
 });
 app.get("/users", (req, res) => {
   console.log("Fetching user for email " + req.query.email);
@@ -802,7 +802,6 @@ function runShellScript(command) {
 app.put("/events/update", (req, res) => {
   console.log("Got an update request for scan id " + req.body.scan_id + " and project=" + req.body.project_name);
   const eventUpdateQuery = {
-    scan_id: req.body.scan_id,
     project_name: req.body.project_name
   };
   console.log("Event update query body: " + JSON.stringify(req.body));
