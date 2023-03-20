@@ -19,6 +19,7 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+var last_scan_id = 0;
 /*
 const options = {
   key: fs.readFileSync("server.key"),
@@ -121,112 +122,25 @@ app.get("/login", (req, res) => {
       }
     });
 });
-app.get("/fullscanexcel", (req, res) => {
-  generateScanSummaryExcel('/tmp/scan_results.json', req, res)
-})
-
-function generateScanSummaryExcel(jsonfile, req, res) {
-  const wb = new xl.Workbook();
-  const ws = wb.addWorksheet('Full Scan Data');
-  var headerStyle = wb.createStyle({
-    font: {
-      bold: true,
-      color: '000000',
-      name: 'Calibri',
-      size: 14,
-    },
-  });
-  var style = wb.createStyle({
-    font: {
-      color: '#000000',
-      size: 12,
-      name: 'Calibri',
-    }
-  });
-  var json = []
-  fs.readFile(jsonfile, 'utf8', (err, data) => {
-    if (err) {
-      console.error(err);
-      return;
-    }
-    json = JSON.parse(data);
-    console.log("Success reading data, length=" + json.length);
-    var arr = []
-    for (i = 0; i < json.length; i++) {
-      var obj = {
-        "Scan_ID": json[i].scan_id,
-        "Time": JSON.stringify(json[i].timestamp).replace(/"/g, ""),
-        "Type": JSON.stringify(json[i].type).replace(/"/g, ""),
-        "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
-        "Dependencies": JSON.stringify(json[i].file_details.dependencies).replace(/"/g, ""),
-        "User_Defined_Env_Vars": JSON.stringify(json[i].file_details.env_vars[0]),
-        "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
-        "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
-        "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
-        "Instances": json[i].manifest.applications[0].instances,
-        "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
-        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
-        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
-        "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
-        "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
+app.get("/getlastscanid", (req, res) => {
+  dbConnection
+    .collection("Events")
+    .find()
+    .sort({ "time_created": -1 })
+    .limit(1)
+    .toArray(function (err, result) {
+      if (err) {
+        res.status(400).send("Error fetching user - " + err);
+        console.log("Failed login for " + req.query.email + ": " + err);
+      } else {
+        //res.json(result);
+        //console.log("Login response: " + JSON.stringify(result));
+        last_scan_id = result[0].scan_id;
+        res.status(200).send(JSON.stringify(result));
       }
-      arr.push(obj);
-    }
-    console.log("Array Length = " + arr.length);
-    const headingColumnNames = [
-      "Scan ID",
-      "Date",
-      "Type",
-      "File Name",
-      "Dependencies",
-      "User Defined Env Vars",
-      "System (VCAP) Env Vars",
-      "App Name",
-      "Memory",
-      "Instances",
-      "Disk Quota",
-      "Buildpacks",
-      "Log Rate Limit",
-      "Manifest Env Variables",
-      "Routes"
-    ];
-    //Write Column Title in Excel file
-    let headingColumnIndex = 1;
-    headingColumnNames.forEach(heading => {
-      ws.cell(1, headingColumnIndex++)
-        .string(heading).style(headerStyle)
     });
-    //Write Data in Excel file
-    let rowIndex = 2;
-    arr.forEach(record => {
-      let columnIndex = 1;
-      Object.keys(record).forEach(columnName => {
-        if (columnIndex == 1 || columnIndex == 10) {
-          ws.cell(rowIndex, columnIndex++)
-            .number(record[columnName])
-        } else {
-          ws.cell(rowIndex, columnIndex++)
-            .string(record[columnName]).style(style)
-        }
+});
 
-      });
-      rowIndex++;
-    });
-    console.log("Sending data.xls to web client..")
-    //wb.write('/tmp/data.xls');
-    wb.write('/tmp/data.xls', res);
-
-    //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
-  });
-  //res.setHeader("Content-Type", "application/vnd.ms-excel");
-  /*res.writeHead(200, {
-    'Content-Type': 'application/vnd.ms-excel',
-    'Content-Length': fs.statSync('data.xls').size
-  });
-  var readStream = fs.createReadStream('data.xls');
-  // We replaced all the event handlers with a simple call to readStream.pipe()
-  readStream.pipe(res);*/
-}
 function generateQueryFilteredExcel(jsonfile, req, res, desc) {
   const wb = new xl.Workbook();
   const ws = wb.addWorksheet(desc);
@@ -571,6 +485,7 @@ app.post("/new-scan-started", (req, res) => {
 //Create Event
 app.post("/events/insert", (req, res) => {
   console.log("Received array " + JSON.stringify(req.body));
+  last_scan_id = req.body.scan_id;
   eventDocument = {
     scan_id: req.body.scan_id,
     time_created: req.body.timestamp,
@@ -643,13 +558,39 @@ app.get("/fetchevents", (req, res) => {
       }
     });
 });
-//Neaby Events for my subscribed geo location options
 app.get("/topscan", (req, res) => {
-  console.log("received top level scan request from " + req.query.email);
-  console.log("Response: " + JSON.stringify(eventDocument));
-  res.jsonp(eventDocument);
-});
+  console.log("topscan Call for scan id = " + req.query.scan_id);
 
+  dbConnection
+    .collection("Events")
+    .find({
+      scan_id: Number.parseInt(req.query.scan_id)
+    })
+    .limit(20000)
+    .toArray(function (err, result) {
+      if (err) {
+        console.log("Failed topscan  " + err);
+        res.status(404).send("No events");
+      } else {
+        //res.json(result);
+        console.log("Success Calling topscan events");
+        if (result && result.length > 0) {
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/topscan_results.json', JSON.stringify(result), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/topscan_results.json', req, res, "Top Level Scan Data");
+          });
+          //res.status(200).jsonp(result);
+        } else {
+          //res.status(404).send("No Events");
+          console.log("No events");
+        }
+      }
+    });
+});
 app.get("/getEventsForInstances", (req, res) => {
   console.log("getEventsForInstances Call for scan id = " + req.query.scan_id);
   var type = req.query.type;
@@ -947,7 +888,7 @@ var mysocket = null;
 io.on("connection", function (socket) {
   mysocket = socket;
   console.log("a user connected");
-  mysocket.emit("event", { lang: "en-US", text: "Today is a beautiful day" });
+  mysocket.emit("init-event", { last_scan_id: last_scan_id, text: "Today is a beautiful day" });
   socket.on("create-room", function (room) {
     if (room) {
       socket.join(room.channel);

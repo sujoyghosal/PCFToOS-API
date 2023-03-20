@@ -19,13 +19,13 @@ app.use(cors());
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+var last_scan_id = 0;
 /*
 const options = {
   key: fs.readFileSync("server.key"),
   cert: fs.readFileSync("server.cert"),
 };*/
-const wb = new xl.Workbook();
-const ws = wb.addWorksheet('Scan Data');
+
 app.use(function (err, _req, res, next) {
   console.error(err.stack);
   res.status(500).send("Something broke!");
@@ -53,43 +53,8 @@ client.connect((err) => {
 });
 
 app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/index.html");
+  res.send("Hi, Welcome to the PCF to OpenShift APIs")
 });
-app.get("/GetExcel", (req, res) => {
-  console.log("Got excel download request from app...")
-  let workbook = new excel.Workbook();
-  let worksheet = workbook.addWorksheet("Tutorials");
-
-  worksheet.columns = [
-    { header: "Id", key: "id", width: 5 },
-    { header: "Title", key: "title", width: 25 },
-    { header: "Description", key: "description", width: 25 },
-    { header: "Published", key: "published", width: 10 },
-  ];
-
-  // Add Array Rows
-  let tutorials = [];
-  tutorials.push({
-    id: 1,
-    title: "T1",
-    description: "D1",
-    published: "27 July"
-  })
-  worksheet.addRows(tutorials);
-
-  // res is a Stream object
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
-  res.setHeader(
-    "Content-Disposition",
-    "attachment; filename=" + "tutorials.xlsx"
-  );
-  return workbook.xlsx.write(res).then(function () {
-    res.status(200).end();
-  });
-})
 app.get("/users", (req, res) => {
   console.log("Fetching user for email " + req.query.email);
   dbConnection
@@ -158,8 +123,29 @@ app.get("/login", (req, res) => {
     });
 });
 app.get("/fullscanexcel", (req, res) => {
+  generateScanSummaryExcel('/tmp/scan_results.json', req, res)
+})
+
+function generateScanSummaryExcel(jsonfile, req, res) {
+  const wb = new xl.Workbook();
+  const ws = wb.addWorksheet('Full Scan Data');
+  var headerStyle = wb.createStyle({
+    font: {
+      bold: true,
+      color: '000000',
+      name: 'Calibri',
+      size: 14,
+    },
+  });
+  var style = wb.createStyle({
+    font: {
+      color: '#000000',
+      size: 12,
+      name: 'Calibri',
+    }
+  });
   var json = []
-  fs.readFile('scan_results.json', 'utf8', (err, data) => {
+  fs.readFile(jsonfile, 'utf8', (err, data) => {
     if (err) {
       console.error(err);
       return;
@@ -169,18 +155,19 @@ app.get("/fullscanexcel", (req, res) => {
     var arr = []
     for (i = 0; i < json.length; i++) {
       var obj = {
-        "Scan_ID": "'" + json[i].scan_id + "'",
-        "Time": "'" + json[i].timestamp + "'",
-        "Type": "'" + json[i].type + "'",
-        "File": "'" + json[i].file_details.file + "'",
-        "Dependencies": "'" + json[i].file_details.dependencies + "'",
-        "Env_vars": "'" + json[i].file_details.env_vars + "'",
-        "App_Name": "'" + json[i].manifest.applications[0].name + "'",
-        "Memory": "'" + json[i].manifest.applications[0].memory + "'",
-        "Instances": "'" + json[i].manifest.applications[0].instances + "'",
-        "Disk_Quota": "'" + json[i].manifest.applications[0].disk_quota + "'",
-        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks),
-        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']),
+        "Scan_ID": json[i].scan_id,
+        "Time": JSON.stringify(json[i].timestamp).replace(/"/g, ""),
+        "Type": JSON.stringify(json[i].type).replace(/"/g, ""),
+        "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
+        "Dependencies": JSON.stringify(json[i].file_details.dependencies).replace(/"/g, ""),
+        "User_Defined_Env_Vars": JSON.stringify(json[i].file_details.env_vars[0]),
+        "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
+        "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
+        "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
+        "Instances": json[i].manifest.applications[0].instances,
+        "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
         "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
         "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
       }
@@ -193,7 +180,110 @@ app.get("/fullscanexcel", (req, res) => {
       "Type",
       "File Name",
       "Dependencies",
-      "Env Vars",
+      "User Defined Env Vars",
+      "System (VCAP) Env Vars",
+      "App Name",
+      "Memory",
+      "Instances",
+      "Disk Quota",
+      "Buildpacks",
+      "Log Rate Limit",
+      "Manifest Env Variables",
+      "Routes"
+    ];
+    //Write Column Title in Excel file
+    let headingColumnIndex = 1;
+    headingColumnNames.forEach(heading => {
+      ws.cell(1, headingColumnIndex++)
+        .string(heading).style(headerStyle)
+    });
+    //Write Data in Excel file
+    let rowIndex = 2;
+    arr.forEach(record => {
+      let columnIndex = 1;
+      Object.keys(record).forEach(columnName => {
+        if (columnIndex == 1 || columnIndex == 10) {
+          ws.cell(rowIndex, columnIndex++)
+            .number(record[columnName])
+        } else {
+          ws.cell(rowIndex, columnIndex++)
+            .string(record[columnName]).style(style)
+        }
+
+      });
+      rowIndex++;
+    });
+    console.log("Sending data.xls to web client..")
+    //wb.write('/tmp/data.xls');
+    wb.write('/tmp/data.xls', res);
+
+    //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
+  });
+  //res.setHeader("Content-Type", "application/vnd.ms-excel");
+  /*res.writeHead(200, {
+    'Content-Type': 'application/vnd.ms-excel',
+    'Content-Length': fs.statSync('data.xls').size
+  });
+  var readStream = fs.createReadStream('data.xls');
+  // We replaced all the event handlers with a simple call to readStream.pipe()
+  readStream.pipe(res);*/
+}
+function generateQueryFilteredExcel(jsonfile, req, res, desc) {
+  const wb = new xl.Workbook();
+  const ws = wb.addWorksheet(desc);
+  var headerStyle = wb.createStyle({
+    font: {
+      bold: true,
+      color: '000000',
+      size: 14,
+    },
+  });
+  var style = wb.createStyle({
+    font: {
+      color: '#000000',
+      size: 12,
+      name: 'Calibri',
+    }
+  });
+  var json = []
+  fs.readFile(jsonfile, 'utf8', (err, data) => {
+    if (err) {
+      console.error(err);
+      return;
+    }
+    json = JSON.parse(data);
+    console.log("Success reading data, length=" + json.length);
+    var arr = []
+    for (i = 0; i < json.length; i++) {
+      console.log(JSON.stringify(json[i]));
+      var obj = {
+        "Scan_ID": json[i].scan_id,
+        "Time": JSON.stringify(json[i].time_created).replace(/"/g, ""),
+        "Type": JSON.stringify(json[i].file_type).replace(/"/g, ""),
+        "File": JSON.stringify(json[i].file_details.file).replace(/"/g, ""),
+        "Dependencies": JSON.stringify(json[i].file_details.dependencies).replace(/"/g, ""),
+        "User_Defined_Env_Vars": JSON.stringify(json[i].file_details.env_vars[0]),
+        "VCAP_Env_Vars": JSON.stringify(json[i].file_details.vcap_env_vars),
+        "App_Name": JSON.stringify(json[i].manifest.applications[0].name).replace(/"/g, ""),
+        "Memory": JSON.stringify(json[i].manifest.applications[0].memory).replace(/"/g, ""),
+        "Instances": json[i].manifest.applications[0].instances,
+        "Disk_Quota": JSON.stringify(json[i].manifest.applications[0].disk_quota).replace(/"/g, ""),
+        "Buildpacks": JSON.stringify(json[i].manifest.applications[0].buildpacks).replace(/"/g, ""),
+        "Log_Rate_Limit": JSON.stringify(json[i].manifest.applications[0]['log-rate-limit']).replace(/"/g, ""),
+        "App_Env_Vars": JSON.stringify(json[i].manifest.applications[0].env),
+        "Routes": JSON.stringify(json[i].manifest.applications[0].routes)
+      }
+      arr.push(obj);
+    }
+    console.log("Array Length = " + arr.length);
+    const headingColumnNames = [
+      "Scan ID",
+      "Date",
+      "Type",
+      "File Name",
+      "Dependencies",
+      "User Defined Env Vars",
+      "System (VCAP) Env Vars",
       "App Name",
       "Memory",
       "Instances",
@@ -207,21 +297,26 @@ app.get("/fullscanexcel", (req, res) => {
     let headingColumnIndex = 1;
     headingColumnNames.forEach(heading => {
       ws.cell(1, headingColumnIndex++)
-        .string(heading)
+        .string(heading).style(headerStyle)
     });
     //Write Data in Excel file
     let rowIndex = 2;
     arr.forEach(record => {
       let columnIndex = 1;
       Object.keys(record).forEach(columnName => {
-        ws.cell(rowIndex, columnIndex++)
-          .string(record[columnName])
+        if (columnIndex == 1 || columnIndex == 10) {
+          ws.cell(rowIndex, columnIndex++)
+            .number(record[columnName]).style(style)
+        } else {
+          ws.cell(rowIndex, columnIndex++)
+            .string(record[columnName]).style(style)
+        }
       });
       rowIndex++;
     });
     console.log("Sending data.xls to web client..")
-    wb.write('data.xls');
-    wb.write('data.xls', res);
+    //wb.write('/tmp/data.xls');
+    wb.write('/tmp/data.xls', res);
 
     //res.setHeader("Content-Disposition", "attachment; filename=" + '/Users/Sujoy.Ghosal/apps/PCFToOS-API2/data.xlsx');
   });
@@ -233,7 +328,7 @@ app.get("/fullscanexcel", (req, res) => {
   var readStream = fs.createReadStream('data.xls');
   // We replaced all the event handlers with a simple call to readStream.pipe()
   readStream.pipe(res);*/
-})
+}
 async function getUserByEmail(email) {
   if (!email || email == null || email.length < 3) {
     console.log("GetUserByEmail: Not a valid email");
@@ -477,14 +572,16 @@ app.post("/new-scan-started", (req, res) => {
 //Create Event
 app.post("/events/insert", (req, res) => {
   console.log("Received array " + JSON.stringify(req.body));
+  last_scan_id = req.body.scan_id;
   eventDocument = {
     scan_id: req.body.scan_id,
     time_created: req.body.timestamp,
     event_type: "top level scan",
+    project_name: req.body.current_project,
     file_type: req.body.type,
     total_files: req.body.total_files,
     file_number: req.body.file_number,
-    results: req.body.file_details,
+    file_details: req.body.file_details,
     manifest: req.body.manifest,
     packagejson: req.body.packagejson
   };
@@ -548,37 +645,169 @@ app.get("/fetchevents", (req, res) => {
       }
     });
 });
-//Neaby Events for my subscribed geo location options
 app.get("/topscan", (req, res) => {
-  console.log("received top level scan request from " + req.query.email);
-  console.log("Response: " + JSON.stringify(eventDocument));
-  res.jsonp(eventDocument);
-});
-
-app.get("/getEventsForVeryHighInstances", (req, res) => {
-  console.log("getEventsForVeryHighInstances Call...");
+  console.log("topscan Call for scan id = " + req.query.scan_id);
 
   dbConnection
     .collection("Events")
     .find({
-      "manifest.applications[0].instances": {
-        //$in: req.body.scan_id,
-        //$in: [29233],
-        $gt: 5,
-      },
+      scan_id: Number.parseInt(req.query.scan_id)
     })
-    .limit(200)
+    .limit(20000)
     .toArray(function (err, result) {
       if (err) {
-        console.log("Failed getEventsForVeryHighInstances  " + err);
+        console.log("Failed topscan  " + err);
         res.status(404).send("No events");
       } else {
         //res.json(result);
-        console.log("Success Calling getEventsForVeryHighInstances");
+        console.log("Success Calling topscan events");
         if (result && result.length > 0) {
-          res.status(200).jsonp(result);
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/topscan_results.json', JSON.stringify(result), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/topscan_results.json', req, res, "Top Level Scan Data");
+          });
+          //res.status(200).jsonp(result);
         } else {
-          res.status(404).send("No Events");
+          //res.status(404).send("No Events");
+          console.log("No events");
+        }
+      }
+    });
+});
+app.get("/getEventsForInstances", (req, res) => {
+  console.log("getEventsForInstances Call for scan id = " + req.query.scan_id);
+  var type = req.query.type;
+  if (!type || type.length == 0) {
+    console.log("No type value found in request - setting to default very high");
+    type = "vh";
+  }
+  var threshold_low = 0;
+  var threshold_high = 0;
+  var desc = "";
+  switch (type) {
+    case "n":
+      threshold_low = 0;
+      threshold_high = 2;
+      desc = "Normal Container Instances";
+      break;
+    case "mh":
+      threshold_low = 2;
+      threshold_high = 4;
+      desc = "Medium High Container Instances";
+      break;
+    case "h":
+      threshold_low = 4;
+      threshold_high = 6;
+      desc = "High Container Instances";
+      break;
+    case "vh":
+      threshold_low = 6;
+      threshold_high = 4000;
+      desc = "Very High Container Instances";
+      break;
+  }
+  dbConnection
+    .collection("Events")
+    .find({
+      scan_id: Number.parseInt(req.query.scan_id),
+      'manifest.applications.0.instances': { $gt: threshold_low, $lte: threshold_high }
+    })
+    .limit(20000)
+    .toArray(function (err, result) {
+      if (err) {
+        console.log("Failed getEventsForInstances  " + err);
+        res.status(404).send("No events");
+      } else {
+        //res.json(result);
+        console.log("Success Calling fetch events");
+        if (result && result.length > 0) {
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/instances.json', JSON.stringify(result), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/instances.json', req, res, desc);
+          });
+          //res.status(200).jsonp(result);
+        } else {
+          //res.status(404).send("No Events");
+          console.log("No events");
+        }
+      }
+    });
+});
+
+app.get("/getEventsForMemory", (req, res) => {
+  console.log("getEventsForMemory Call for scan id = " + req.query.scan_id);
+  var type = req.query.type;
+  if (!type || type.length == 0) {
+    console.log("No type value found in request - setting to default very high");
+    type = "vh";
+  }
+  var threshold_low = 0;
+  var threshold_high = 0;
+  var desc = "";
+  switch (type) {
+    case "n":
+      threshold_low = 0;
+      threshold_high = 256;
+      desc = "Normal Container Memory"
+      break;
+    case "mh":
+      threshold_low = 256;
+      threshold_high = 512;
+      desc = "Medium High Container Memory"
+      break;
+    case "h":
+      threshold_low = 512;
+      threshold_high = 1024;
+      desc = "High Container Memory"
+      break;
+    case "vh":
+      threshold_low = 1024;
+      threshold_high = 5000;
+      desc = "Very High Container Memory"
+      break;
+  }
+  dbConnection
+    .collection("Events")
+    .find({
+      scan_id: Number.parseInt(req.query.scan_id),
+      //'manifest.applications.0.memory': { $gt: 1024 }
+    })
+    .limit(5000)
+    .toArray(function (err, result) {
+      if (err) {
+        console.log("Failed getEventsForMemory  " + err);
+        res.status(404).send("No events");
+      } else {
+        //res.json(result);
+        console.log("Success Calling fetch events");
+        if (result && result.length > 0) {
+          var m_array = [];
+          for (i = 0; i < result.length; i++) {
+            var m = result[i].manifest.applications[0].memory.replace(/\D/g, '');
+            if (m > threshold_low && m <= threshold_high) {
+              m_array.push(result[i]);
+            }
+          }
+          console.log("Found " + m_array.length + " projects with " + type + " type memory values in manifest.yaml.");
+          var options = { flag: 'w' };
+          fs.writeFile('/tmp/memory.json', JSON.stringify(m_array), options, err => {
+            if (err) {
+              console.error(err);
+            }
+            console.log("Created file...");
+            generateQueryFilteredExcel('/tmp/memory.json', req, res, desc);
+          });
+          //res.status(200).jsonp(result);
+        } else {
+          //res.status(404).send("No Events");
           console.log("No events");
         }
       }
@@ -599,18 +828,15 @@ function runShellScript(command) {
 }
 //Event Update
 app.put("/events/update", (req, res) => {
+  console.log("Got an update request for scan id " + req.body.scan_id + " and project=" + req.body.project_name);
   const eventUpdateQuery = {
-    _id: new mongodb.ObjectID(req.body.eventID),
+    project_name: req.body.project_name
   };
   console.log("Event update query body: " + JSON.stringify(req.body));
   const updates = {
     $set: {
-      event_type: req.body.event_type,
-      event_name: req.body.event_name,
-      city: req.body.city,
-      item_category: req.body.item_category,
-      item_name: req.body.item_name,
-      time_created: Date().toString(),
+      status: req.body.status,
+      migration_notes: req.body.migration_notes
     },
   };
 
@@ -749,7 +975,7 @@ var mysocket = null;
 io.on("connection", function (socket) {
   mysocket = socket;
   console.log("a user connected");
-  mysocket.emit("event", { lang: "en-US", text: "Today is a beautiful day" });
+  mysocket.emit("init-event", { last_scan_id: last_scan_id, text: "Today is a beautiful day" });
   socket.on("create-room", function (room) {
     if (room) {
       socket.join(room.channel);
